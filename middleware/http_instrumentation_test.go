@@ -33,7 +33,7 @@ func TestMiddleware(t *testing.T) {
 
 	m.
 		EXPECT().
-		ReportLatency(gomock.Eq("TestPath"), gomock.Eq(200), gomock.Any())
+		ReportLatency(gomock.Eq("TestPath"), gomock.Eq("GET"), gomock.Eq(200), gomock.Any())
 
 	handlerToTest.ServeHTTP(w, req)
 	// Wait for goroutine to execute
@@ -59,7 +59,7 @@ func TestRouteName(t *testing.T) {
 
 	m.
 		EXPECT().
-		ReportLatency(gomock.Eq("/test"), gomock.Eq(200), gomock.Any())
+		ReportLatency(gomock.Eq("/test"), gomock.Eq("GET"), gomock.Eq(200), gomock.Any())
 
 	handlerToTest.ServeHTTP(w, req)
 	// Wait for goroutine to execute
@@ -85,7 +85,7 @@ func TestMiddlewareSkipRoute(t *testing.T) {
 
 	m.
 		EXPECT().
-		ReportLatency(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		ReportLatency(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 	handlerToTest.ServeHTTP(w, req)
 }
@@ -110,7 +110,7 @@ func TestAddBlacklistURL(t *testing.T) {
 
 	m.
 		EXPECT().
-		ReportLatency(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		ReportLatency(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 	handlerToTest.ServeHTTP(w, req)
 }

@@ -18,9 +18,9 @@ type HTTPInstrumentationMiddleware struct {
 }
 
 // MetricReporter defines what kinds of metrics it supports
-// go:generate mockgen -source=http_instrumentation.go -destination=http_instrumentation_test.go -package=middleware
+// go:generate mockgen -source=http_instrumentation.go -destination=mock_http_instrumentation_test.go -package=middleware_test
 type MetricReporter interface {
-	ReportLatency(routeName string, statusCode int, duration float64)
+	ReportLatency(routeName string, method string, statusCode int, duration float64)
 }
 
 // NewHTTPInstrumentationMiddleware creates new metric middleware
@@ -60,7 +60,7 @@ func (middleware *HTTPInstrumentationMiddleware) Middleware(next http.Handler) h
 							routeName = r
 						}
 					}
-					middleware.Metrics.ReportLatency(routeName, statusCode, duration.Seconds())
+					middleware.Metrics.ReportLatency(routeName, r.Method, statusCode, duration.Seconds())
 				}
 			}(httpDuration, sw.status)
 		}()
