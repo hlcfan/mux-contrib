@@ -43,21 +43,27 @@ func (middleware *HTTPInstrumentationMiddleware) Middleware(next http.Handler) h
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if urlBlacklisted(r.RequestURI) {
 			next.ServeHTTP(w, r)
-		} else {
-			now := time.Now().UTC()
-			sw := customResponseWriter{ResponseWriter: w}
-			next.ServeHTTP(&sw, r)
-			httpDuration := time.Since(now)
-			defer func() {
-				go func(duration time.Duration, statusCode int) {
-					var match mux.RouteMatch
-					if middleware.Router.Match(r, &match) {
-						routeName := match.Route.GetName()
-						middleware.Metrics.ReportLatency(routeName, statusCode, duration.Seconds())
-					}
-				}(httpDuration, sw.status)
-			}()
+			return
 		}
+		now := time.Now().UTC()
+		sw := customResponseWriter{ResponseWriter: w}
+		next.ServeHTTP(&sw, r)
+		httpDuration := time.Since(now)
+		defer func() {
+			go func(duration time.Duration, statusCode int) {
+				var match mux.RouteMatch
+				if middleware.Router.Match(r, &match) && match.Route != nil {
+					var routeName string
+					routeName = match.Route.GetName()
+					if len(routeName) == 0 {
+						if r, err := match.Route.GetPathTemplate(); err == nil {
+							routeName = r
+						}
+					}
+					middleware.Metrics.ReportLatency(routeName, statusCode, duration.Seconds())
+				}
+			}(httpDuration, sw.status)
+		}()
 	})
 }
 

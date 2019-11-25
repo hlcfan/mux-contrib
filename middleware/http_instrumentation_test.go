@@ -40,6 +40,32 @@ func TestMiddleware(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 }
 
+func TestRouteName(t *testing.T) {
+	router := mux.NewRouter().StrictSlash(true)
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, response)
+	}
+	router.HandleFunc("/test", handler).Methods("GET")
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	m := NewMockMetricReporter(ctrl)
+	mw := middleware.NewHTTPInstrumentationMiddleware(router, m)
+
+	handlerToTest := mw.Middleware(http.HandlerFunc(handler))
+	req := httptest.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+
+	m.
+		EXPECT().
+		ReportLatency(gomock.Eq("/test"), gomock.Eq(200), gomock.Any())
+
+	handlerToTest.ServeHTTP(w, req)
+	// Wait for goroutine to execute
+	time.Sleep(100 * time.Millisecond)
+}
+
 func TestMiddlewareSkipRoute(t *testing.T) {
 	router := mux.NewRouter().StrictSlash(true)
 	handler := func(w http.ResponseWriter, r *http.Request) {
