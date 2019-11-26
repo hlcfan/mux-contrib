@@ -2,7 +2,7 @@
 
 ## HTTP Instrumentation
 
-It'll report `route name`, `status code`, `duration`.
+It'll report `route name`, `http methd`, `status code`, `duration`.
 
 ### Usage
 
