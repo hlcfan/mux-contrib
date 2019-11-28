@@ -16,8 +16,8 @@ type RecoveryMiddleware struct {
 	logger Logger
 }
 
-// SetLogger creates RecoveryMiddleware
-func (m *RecoveryMiddleware) SetLogger(logger Logger) {
+// OverrideLogger creates RecoveryMiddleware
+func (m *RecoveryMiddleware) OverrideLogger(logger Logger) {
 	m.logger = logger
 }
 
