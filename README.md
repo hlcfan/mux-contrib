@@ -1,5 +1,18 @@
 # mux-contrib
 
+## Installation
+
+### Go module
+```
+go get -u github.com/hlcfan/mux-contrib/middleware
+```
+
+### Dep
+```
+dep ensure -add github.com/hlcfan/mux-contrib/middleware
+```
+
+
 ## HTTP Instrumentation
 
 It'll report `route name`, `http methd`, `status code`, `duration`.
