@@ -1,6 +1,7 @@
 package middleware_test
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,7 +16,7 @@ import (
 const (
 	response = "<html><body>Hello World!</body></html>"
 	referer  = "http://example.com/"
-	ua       = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.88 Safari/537.36"
+	ua       = "test-ua"
 )
 
 func TestMiddleware(t *testing.T) {
@@ -23,11 +24,15 @@ func TestMiddleware(t *testing.T) {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		r.Header.Set("Referer", referer)
 		r.Header.Set("User-Agent", ua)
+		r.Header.Set("Referer", "http://example.com/")
+		r.RemoteAddr = "fake-local-addr"
 		io.WriteString(w, response)
 	}
 	router.HandleFunc("/test", handler).Methods("GET").Name("TestPath")
 
 	mw := middleware.NewHTTPInstrumentationMiddleware(router)
+	var buf bytes.Buffer
+	mw.SetOutput(&buf)
 	mw.RegisterHook(func(record *middleware.InstrumentationRecord) {
 		assert.Equal(t, record.RouteName, "TestPath")
 		assert.Equal(t, record.Method, "GET")
@@ -51,6 +56,8 @@ func TestMiddleware(t *testing.T) {
 	req := httptest.NewRequest("GET", "/test", nil)
 	w := httptest.NewRecorder()
 	handlerToTest.ServeHTTP(w, req)
+	time.Sleep(5 * time.Millisecond)
+	assert.Regexp(t, `fake-local-addr\s-\s-\s\[\d{1,2}\/\w{3}\/\d{4}\s\d{1,2}:\d{1,2}:\d{1,2}\]\s"GET\s\/test\sHTTP\/1.1\s200\s38"\s[0-9]*[.][0-9]+\s"http:\/\/example.com\/"\s"test-ua"\s".+"`, buf.String())
 }
 
 func TestMiddlewareSkipRoute(t *testing.T) {
@@ -100,4 +107,25 @@ func TestAddBlacklistURL(t *testing.T) {
 	time.Sleep(5 * time.Millisecond)
 
 	assert.Equal(t, called, 0)
+}
+
+func TestDisableLogging(t *testing.T) {
+	router := mux.NewRouter().StrictSlash(true)
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, response)
+	}
+	router.HandleFunc("/test", handler).Methods("GET").Name("TestPath")
+
+	mw := middleware.NewHTTPInstrumentationMiddleware(router)
+	mw.DisableLogging()
+	var buf bytes.Buffer
+	mw.SetOutput(&buf)
+
+	handlerToTest := mw.Middleware(http.HandlerFunc(handler))
+	req := httptest.NewRequest("GET", "/test", nil)
+	w := httptest.NewRecorder()
+	handlerToTest.ServeHTTP(w, req)
+	time.Sleep(5 * time.Millisecond)
+
+	assert.Len(t, buf.String(), 0)
 }

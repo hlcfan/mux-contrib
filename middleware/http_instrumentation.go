@@ -1,7 +1,10 @@
 package middleware
 
 import (
+	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -11,10 +14,22 @@ var urlBlacklist = map[string]struct{}{
 	"/metrics": struct{}{},
 }
 
+// apacheFormatPattern follows Apache CLF (combined)
+// Extend the format here to add the Request ID
+const apacheFormatPattern = "%s - - [%s] \"%s %d %d\" %f \"%s\" \"%s\" \"%s\"\n"
+
 // HTTPInstrumentationMiddleware is the middleware to collect metrics
 type HTTPInstrumentationMiddleware struct {
-	router *mux.Router
-	hooks  []callback
+	options Options
+	router  *mux.Router
+	hooks   []callback
+	output  io.Writer
+}
+
+// Options is used to configure this middleware
+// Logging is enabled by default
+type Options struct {
+	Logging bool
 }
 
 // callback consumes the instrumentation data
@@ -36,18 +51,30 @@ type InstrumentationRecord struct {
 	ElapsedTime   time.Duration
 }
 
-// NewHTTPInstrumentationMiddleware creates instrumentation middleware
-func NewHTTPInstrumentationMiddleware(router *mux.Router) *HTTPInstrumentationMiddleware {
-	return &HTTPInstrumentationMiddleware{
-		router: router,
-	}
-}
-
 // customResponseWriter is used for getting the response status
 type customResponseWriter struct {
 	http.ResponseWriter
 	status int
 	length int
+}
+
+// NewHTTPInstrumentationMiddleware creates instrumentation middleware
+func NewHTTPInstrumentationMiddleware(router *mux.Router) *HTTPInstrumentationMiddleware {
+	m := &HTTPInstrumentationMiddleware{
+		output: os.Stdout,
+		options: Options{
+			Logging: true,
+		},
+		router: router,
+	}
+
+	m.RegisterHook(m.loggingProcessor)
+	return m
+}
+
+// SetOutput specifies the output, follows io.Writer
+func (middleware *HTTPInstrumentationMiddleware) SetOutput(output io.Writer) {
+	middleware.output = output
 }
 
 // Middleware wraps the logic for collecting metrics
@@ -96,6 +123,11 @@ func (middleware *HTTPInstrumentationMiddleware) Middleware(next http.Handler) h
 	})
 }
 
+// DisableLogging disables the logging
+func (middleware *HTTPInstrumentationMiddleware) DisableLogging() {
+	middleware.options.Logging = false
+}
+
 // RegisterHook registers processors
 func (middleware *HTTPInstrumentationMiddleware) RegisterHook(callbacks ...callback) {
 	for _, cb := range callbacks {
@@ -107,6 +139,14 @@ func (middleware *HTTPInstrumentationMiddleware) RegisterHook(callbacks ...callb
 func (middleware *HTTPInstrumentationMiddleware) processHooks(instrumentationRecord *InstrumentationRecord) {
 	for _, cb := range middleware.hooks {
 		cb(instrumentationRecord)
+	}
+}
+
+func (middleware *HTTPInstrumentationMiddleware) loggingProcessor(r *InstrumentationRecord) {
+	if middleware.options.Logging {
+		timeFormatted := r.Timestamp.Format("02/Jan/2006 03:04:05")
+		requestLine := fmt.Sprintf("%s %s %s", r.Method, r.URI, r.Protocol)
+		fmt.Fprintf(middleware.output, apacheFormatPattern, r.IPAddr, timeFormatted, requestLine, r.Status, r.ResponseBytes, r.ElapsedTime.Seconds(), r.Referer, r.UserAgent, r.RequestID)
 	}
 }
 
