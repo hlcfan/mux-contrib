@@ -13,21 +13,33 @@ var urlBlacklist = map[string]struct{}{
 
 // HTTPInstrumentationMiddleware is the middleware to collect metrics
 type HTTPInstrumentationMiddleware struct {
-	Router  *mux.Router
-	Metrics MetricReporter
+	Router *mux.Router
+	Hooks  []Callback
 }
 
-// MetricReporter defines what kinds of metrics it supports
-// go:generate mockgen -source=http_instrumentation.go -destination=mock_http_instrumentation_test.go -package=middleware_test
-type MetricReporter interface {
-	ReportLatency(routeName string, method string, statusCode int, duration float64)
+// Callback ...
+type Callback func(*InstrumentationRecord)
+
+// InstrumentationRecord ...
+type InstrumentationRecord struct {
+	RouteName     string
+	IPAddr        string
+	Timestamp     time.Time
+	Method        string
+	URI           string
+	Protocol      string
+	Referer       string
+	UserAgent     string
+	RequestID     string
+	Status        int
+	ResponseBytes int
+	ElapsedTime   time.Duration
 }
 
-// NewHTTPInstrumentationMiddleware creates new metric middleware
-func NewHTTPInstrumentationMiddleware(router *mux.Router, metricReporter MetricReporter) *HTTPInstrumentationMiddleware {
+// NewHTTPInstrumentationMiddleware creates instrumentation middleware
+func NewHTTPInstrumentationMiddleware(router *mux.Router) *HTTPInstrumentationMiddleware {
 	return &HTTPInstrumentationMiddleware{
-		Router:  router,
-		Metrics: metricReporter,
+		Router: router,
 	}
 }
 
@@ -45,12 +57,13 @@ func (middleware *HTTPInstrumentationMiddleware) Middleware(next http.Handler) h
 			next.ServeHTTP(w, r)
 			return
 		}
+
 		now := time.Now().UTC()
-		sw := customResponseWriter{ResponseWriter: w}
-		next.ServeHTTP(&sw, r)
-		httpDuration := time.Since(now)
+		sw := &customResponseWriter{ResponseWriter: w}
+		next.ServeHTTP(sw, r)
+
 		defer func() {
-			go func(duration time.Duration, statusCode int) {
+			go func(req *http.Request, sw *customResponseWriter) {
 				var match mux.RouteMatch
 				if middleware.Router.Match(r, &match) && match.Route != nil {
 					var routeName string
@@ -60,11 +73,38 @@ func (middleware *HTTPInstrumentationMiddleware) Middleware(next http.Handler) h
 							routeName = r
 						}
 					}
-					middleware.Metrics.ReportLatency(routeName, r.Method, statusCode, duration.Seconds())
+
+					record := &InstrumentationRecord{
+						RouteName:     routeName,
+						IPAddr:        req.RemoteAddr,
+						Timestamp:     time.Now().UTC(),
+						Method:        req.Method,
+						URI:           req.RequestURI,
+						Protocol:      req.Proto,
+						Referer:       req.Referer(),
+						UserAgent:     req.UserAgent(),
+						Status:        sw.status,
+						ElapsedTime:   time.Since(now),
+						ResponseBytes: sw.length,
+						RequestID:     requestID(),
+					}
+
+					middleware.processHooks(record)
 				}
-			}(httpDuration, sw.status)
+			}(r, sw)
 		}()
 	})
+}
+
+// RegisterHook ...
+func (middleware *HTTPInstrumentationMiddleware) RegisterHook(cb Callback) {
+	middleware.Hooks = append(middleware.Hooks, cb)
+}
+
+func (middleware *HTTPInstrumentationMiddleware) processHooks(instrumentationRecord *InstrumentationRecord) {
+	for _, cb := range middleware.Hooks {
+		cb(instrumentationRecord)
+	}
 }
 
 // BlacklistURL addes urls to blacklist
