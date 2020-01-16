@@ -13,14 +13,14 @@ var urlBlacklist = map[string]struct{}{
 
 // HTTPInstrumentationMiddleware is the middleware to collect metrics
 type HTTPInstrumentationMiddleware struct {
-	Router *mux.Router
-	Hooks  []Callback
+	router *mux.Router
+	hooks  []callback
 }
 
-// Callback ...
-type Callback func(*InstrumentationRecord)
+// callback consumes the instrumentation data
+type callback func(*InstrumentationRecord)
 
-// InstrumentationRecord ...
+// InstrumentationRecord is the data of request/response info
 type InstrumentationRecord struct {
 	RouteName     string
 	IPAddr        string
@@ -39,7 +39,7 @@ type InstrumentationRecord struct {
 // NewHTTPInstrumentationMiddleware creates instrumentation middleware
 func NewHTTPInstrumentationMiddleware(router *mux.Router) *HTTPInstrumentationMiddleware {
 	return &HTTPInstrumentationMiddleware{
-		Router: router,
+		router: router,
 	}
 }
 
@@ -65,7 +65,7 @@ func (middleware *HTTPInstrumentationMiddleware) Middleware(next http.Handler) h
 		defer func() {
 			go func(req *http.Request, sw *customResponseWriter) {
 				var match mux.RouteMatch
-				if middleware.Router.Match(r, &match) && match.Route != nil {
+				if middleware.router.Match(r, &match) && match.Route != nil {
 					var routeName string
 					routeName = match.Route.GetName()
 					if len(routeName) == 0 {
@@ -96,13 +96,16 @@ func (middleware *HTTPInstrumentationMiddleware) Middleware(next http.Handler) h
 	})
 }
 
-// RegisterHook ...
-func (middleware *HTTPInstrumentationMiddleware) RegisterHook(cb Callback) {
-	middleware.Hooks = append(middleware.Hooks, cb)
+// RegisterHook registers processors
+func (middleware *HTTPInstrumentationMiddleware) RegisterHook(callbacks ...callback) {
+	for _, cb := range callbacks {
+		middleware.hooks = append(middleware.hooks, cb)
+	}
 }
 
+// processHooks processes hooks one by one
 func (middleware *HTTPInstrumentationMiddleware) processHooks(instrumentationRecord *InstrumentationRecord) {
-	for _, cb := range middleware.Hooks {
+	for _, cb := range middleware.hooks {
 		cb(instrumentationRecord)
 	}
 }
