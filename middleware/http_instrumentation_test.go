@@ -57,7 +57,7 @@ func TestMiddleware(t *testing.T) {
 	w := httptest.NewRecorder()
 	handlerToTest.ServeHTTP(w, req)
 	time.Sleep(5 * time.Millisecond)
-	assert.Regexp(t, `fake-local-addr\s-\s-\s\[\d{1,2}\/\w{3}\/\d{4}\s\d{1,2}:\d{1,2}:\d{1,2}\]\s"GET\s\/test\sHTTP\/1.1\s200\s38"\s[0-9]*[.][0-9]+\s"http:\/\/example.com\/"\s"test-ua"\s".+"`, buf.String())
+	assert.Regexp(t, `fake-local-addr\s-\s-\s\[\d{1,2}\/\w{3}\/\d{4}\s\d{1,2}:\d{1,2}:\d{1,2}\]\s"GET\s\/test\sHTTP\/1.1\s200\s38"\s\d{1,2}µs\s"http:\/\/example.com\/"\s"test-ua"\s".+"`, buf.String())
 }
 
 func TestMiddlewareSkipRoute(t *testing.T) {

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,11 +13,13 @@ import (
 
 var urlBlacklist = map[string]struct{}{
 	"/metrics": struct{}{},
+	"/ping":    struct{}{},
+	"/health":  struct{}{},
 }
 
 // apacheFormatPattern follows Apache CLF (combined)
 // Extend the format here to add the Request ID
-const apacheFormatPattern = "%s - - [%s] \"%s %d %d\" %f \"%s\" \"%s\" \"%s\"\n"
+const apacheFormatPattern = "%s - - [%s] \"%s %d %d\" %s \"%s\" \"%s\" \"%s\"\n"
 
 // HTTPInstrumentationMiddleware is the middleware to collect metrics
 type HTTPInstrumentationMiddleware struct {
@@ -87,7 +90,11 @@ func (middleware *HTTPInstrumentationMiddleware) Middleware(next http.Handler) h
 
 		now := time.Now().UTC()
 		sw := &customResponseWriter{ResponseWriter: w}
+		requestID := requestID()
+		ctx := context.WithValue(r.Context(), "request-id", requestID)
+		r = r.WithContext(ctx)
 		next.ServeHTTP(sw, r)
+		finishTime := time.Now().UTC()
 
 		defer func() {
 			go func(req *http.Request, sw *customResponseWriter) {
@@ -104,16 +111,16 @@ func (middleware *HTTPInstrumentationMiddleware) Middleware(next http.Handler) h
 					record := &InstrumentationRecord{
 						RouteName:     routeName,
 						IPAddr:        req.RemoteAddr,
-						Timestamp:     time.Now().UTC(),
+						Timestamp:     finishTime,
 						Method:        req.Method,
 						URI:           req.RequestURI,
 						Protocol:      req.Proto,
 						Referer:       req.Referer(),
 						UserAgent:     req.UserAgent(),
 						Status:        sw.status,
-						ElapsedTime:   time.Since(now),
+						ElapsedTime:   finishTime.Sub(now),
 						ResponseBytes: sw.length,
-						RequestID:     requestID(),
+						RequestID:     requestID,
 					}
 
 					middleware.processHooks(record)
@@ -146,7 +153,7 @@ func (middleware *HTTPInstrumentationMiddleware) loggingProcessor(r *Instrumenta
 	if middleware.options.Logging {
 		timeFormatted := r.Timestamp.Format("02/Jan/2006 03:04:05")
 		requestLine := fmt.Sprintf("%s %s %s", r.Method, r.URI, r.Protocol)
-		fmt.Fprintf(middleware.output, apacheFormatPattern, r.IPAddr, timeFormatted, requestLine, r.Status, r.ResponseBytes, r.ElapsedTime.Seconds(), r.Referer, r.UserAgent, r.RequestID)
+		fmt.Fprintf(middleware.output, apacheFormatPattern, r.IPAddr, timeFormatted, requestLine, r.Status, r.ResponseBytes, r.ElapsedTime, r.Referer, r.UserAgent, r.RequestID)
 	}
 }
 
