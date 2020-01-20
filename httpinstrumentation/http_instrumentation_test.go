@@ -1,4 +1,4 @@
-package middleware_test
+package httpinstrumentation_test
 
 import (
 	"bytes"
@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/hlcfan/mux-contrib/middleware"
+	"github.com/hlcfan/mux-contrib/httpinstrumentation"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -30,10 +30,9 @@ func TestMiddleware(t *testing.T) {
 	}
 	router.HandleFunc("/test", handler).Methods("GET").Name("TestPath")
 
-	mw := middleware.NewHTTPInstrumentationMiddleware(router)
 	var buf bytes.Buffer
-	mw.SetOutput(&buf)
-	mw.RegisterHook(func(record *middleware.InstrumentationRecord) {
+	mw := httpinstrumentation.NewMiddleware(router, httpinstrumentation.Output(&buf))
+	mw.RegisterHook(func(record *httpinstrumentation.Record) {
 		assert.Equal(t, record.RouteName, "TestPath")
 		assert.Equal(t, record.Method, "GET")
 		assert.Equal(t, record.Protocol, "HTTP/1.1")
@@ -67,10 +66,10 @@ func TestMiddlewareSkipRoute(t *testing.T) {
 	}
 	router.HandleFunc("/metrics", handler).Methods("GET").Name("TestPath")
 
-	mw := middleware.NewHTTPInstrumentationMiddleware(router)
+	mw := httpinstrumentation.NewMiddleware(router)
 
 	called := 0
-	fn := func(record *middleware.InstrumentationRecord) {
+	fn := func(record *httpinstrumentation.Record) {
 		called++
 	}
 
@@ -91,10 +90,10 @@ func TestAddBlacklistURL(t *testing.T) {
 	}
 	router.HandleFunc("/path-to-skip", handler).Methods("GET").Name("TestPath")
 
-	mw := middleware.NewHTTPInstrumentationMiddleware(router)
-	middleware.BlacklistURL("/path-to-skip")
+	mw := httpinstrumentation.NewMiddleware(router)
+	httpinstrumentation.BlacklistURL("/path-to-skip")
 	called := 0
-	fn := func(record *middleware.InstrumentationRecord) {
+	fn := func(record *httpinstrumentation.Record) {
 		called++
 	}
 
@@ -116,10 +115,8 @@ func TestDisableLogging(t *testing.T) {
 	}
 	router.HandleFunc("/test", handler).Methods("GET").Name("TestPath")
 
-	mw := middleware.NewHTTPInstrumentationMiddleware(router)
-	mw.DisableLogging()
 	var buf bytes.Buffer
-	mw.SetOutput(&buf)
+	mw := httpinstrumentation.NewMiddleware(router, httpinstrumentation.Output(&buf), httpinstrumentation.DisableLogging())
 
 	handlerToTest := mw.Middleware(http.HandlerFunc(handler))
 	req := httptest.NewRequest("GET", "/test", nil)

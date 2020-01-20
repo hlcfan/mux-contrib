@@ -1,4 +1,4 @@
-package middleware
+package httpinstrumentation
 
 import (
 	"context"
@@ -21,8 +21,8 @@ var urlBlacklist = map[string]struct{}{
 // Extend the format here to add the Request ID
 const apacheFormatPattern = "%s - - [%s] \"%s %d %d\" %s \"%s\" \"%s\" \"%s\"\n"
 
-// HTTPInstrumentationMiddleware is the middleware to collect metrics
-type HTTPInstrumentationMiddleware struct {
+// Middleware is the middleware to collect metrics
+type Middleware struct {
 	options Options
 	router  *mux.Router
 	hooks   []callback
@@ -36,10 +36,10 @@ type Options struct {
 }
 
 // callback consumes the instrumentation data
-type callback func(*InstrumentationRecord)
+type callback func(*Record)
 
-// InstrumentationRecord is the data of request/response info
-type InstrumentationRecord struct {
+// Record is the data of request/response info
+type Record struct {
 	RouteName     string
 	IPAddr        string
 	Timestamp     time.Time
@@ -61,9 +61,12 @@ type customResponseWriter struct {
 	length int
 }
 
-// NewHTTPInstrumentationMiddleware creates instrumentation middleware
-func NewHTTPInstrumentationMiddleware(router *mux.Router) *HTTPInstrumentationMiddleware {
-	m := &HTTPInstrumentationMiddleware{
+// FuncOption is the option for middleware
+type FuncOption func(*Middleware)
+
+// NewMiddleware creates instrumentation middleware
+func NewMiddleware(router *mux.Router, options ...FuncOption) *Middleware {
+	m := &Middleware{
 		output: os.Stdout,
 		options: Options{
 			Logging: true,
@@ -71,17 +74,30 @@ func NewHTTPInstrumentationMiddleware(router *mux.Router) *HTTPInstrumentationMi
 		router: router,
 	}
 
+	for _, opt := range options {
+		opt(m)
+	}
+
 	m.RegisterHook(m.loggingProcessor)
 	return m
 }
 
-// SetOutput specifies the output, follows io.Writer
-func (middleware *HTTPInstrumentationMiddleware) SetOutput(output io.Writer) {
-	middleware.output = output
+// Output specifies the output, follows io.Writer
+func Output(output io.Writer) FuncOption {
+	return func(mw *Middleware) {
+		mw.output = output
+	}
+}
+
+// DisableLogging disables the logging
+func DisableLogging() FuncOption {
+	return func(mw *Middleware) {
+		mw.options.Logging = false
+	}
 }
 
 // Middleware wraps the logic for collecting metrics
-func (middleware *HTTPInstrumentationMiddleware) Middleware(next http.Handler) http.Handler {
+func (middleware *Middleware) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if urlBlacklisted(r.RequestURI) {
 			next.ServeHTTP(w, r)
@@ -108,7 +124,7 @@ func (middleware *HTTPInstrumentationMiddleware) Middleware(next http.Handler) h
 						}
 					}
 
-					record := &InstrumentationRecord{
+					record := &Record{
 						RouteName:     routeName,
 						IPAddr:        req.RemoteAddr,
 						Timestamp:     finishTime,
@@ -130,26 +146,21 @@ func (middleware *HTTPInstrumentationMiddleware) Middleware(next http.Handler) h
 	})
 }
 
-// DisableLogging disables the logging
-func (middleware *HTTPInstrumentationMiddleware) DisableLogging() {
-	middleware.options.Logging = false
-}
-
 // RegisterHook registers processors
-func (middleware *HTTPInstrumentationMiddleware) RegisterHook(callbacks ...callback) {
+func (middleware *Middleware) RegisterHook(callbacks ...callback) {
 	for _, cb := range callbacks {
 		middleware.hooks = append(middleware.hooks, cb)
 	}
 }
 
 // processHooks processes hooks one by one
-func (middleware *HTTPInstrumentationMiddleware) processHooks(instrumentationRecord *InstrumentationRecord) {
+func (middleware *Middleware) processHooks(instrumentationRecord *Record) {
 	for _, cb := range middleware.hooks {
 		cb(instrumentationRecord)
 	}
 }
 
-func (middleware *HTTPInstrumentationMiddleware) loggingProcessor(r *InstrumentationRecord) {
+func (middleware *Middleware) loggingProcessor(r *Record) {
 	if middleware.options.Logging {
 		timeFormatted := r.Timestamp.Format("02/Jan/2006 03:04:05")
 		requestLine := fmt.Sprintf("%s %s %s", r.Method, r.URI, r.Protocol)
@@ -178,7 +189,7 @@ func (w *customResponseWriter) WriteHeader(status int) {
 // Write implements the interface
 func (w *customResponseWriter) Write(b []byte) (int, error) {
 	if w.status == 0 {
-		w.status = 200
+		w.status = http.StatusOK
 	}
 	n, err := w.ResponseWriter.Write(b)
 	w.length += n

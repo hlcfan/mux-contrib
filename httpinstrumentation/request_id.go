@@ -1,4 +1,4 @@
-package middleware
+package httpinstrumentation
 
 import (
 	"crypto/rand"
