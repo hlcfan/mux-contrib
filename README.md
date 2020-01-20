@@ -4,12 +4,12 @@
 
 ### Go module
 ```
-go get -u github.com/hlcfan/mux-contrib/middleware
+go get -u github.com/hlcfan/mux-contrib
 ```
 
 ### Dep
 ```
-dep ensure -add github.com/hlcfan/mux-contrib/middleware
+dep ensure -add github.com/hlcfan/mux-contrib
 ```
 
 
@@ -46,19 +46,19 @@ By default, logging is enabled and follows Apache CLF (combined) format, plus a 
 ``` go
 router := mux.NewRouter().StrictSlash(true)
 
-mw := middleware.NewHTTPInstrumentationMiddleware(router)
+// Simply initialize middleware
+mw := httpinstrumentation.NewMiddleware(router)
+
+// Specify output
+mw := httpinstrumentation.NewMiddleware(router, httpinstrumentation.Output(os.Stdout))
+
+// Disable logging
+mw := httpinstrumentation.NewMiddleware(router, httpinstrumentation.Output(os.Stdout), mw.DisableLogging())
 
 // Register processors
 mw.RegisterHook(func(record *middleware.InstrumentationRecord) {
     fmt.Println("Instrumentation data: %#v", record)
 })
-
-// Disable logging
-mw.DisableLogging()
-
-
-// Set output, can be any io.Writer
-mw.SetOutput(os.Stdout)
 
 // Apply middleware
 h = mw.Middleware(router)
@@ -74,7 +74,7 @@ It'll recover from panic and log the stacktrace.
 ### Usage
 
 ``` go
-mw := middleware.RecoveryMiddleware{}
+mw := recovery.Middleware{}
 
 // Override default logger
 // logger should implement `Println(...interface{})`
