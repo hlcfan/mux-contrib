@@ -1,4 +1,4 @@
-package middleware_test
+package recovery_test
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/gorilla/mux"
-	"github.com/hlcfan/mux-contrib/middleware"
+	"github.com/hlcfan/mux-contrib/recovery"
 )
 
 var router = mux.NewRouter().StrictSlash(true)
@@ -17,7 +17,7 @@ var handler = func(w http.ResponseWriter, r *http.Request) {
 }
 
 func TestRecoveryMiddleware(t *testing.T) {
-	mw := middleware.RecoveryMiddleware{}
+	mw := recovery.Middleware{}
 	handlerToTest := mw.Middleware(http.HandlerFunc(handler))
 	req := httptest.NewRequest("GET", "/test", nil)
 	w := httptest.NewRecorder()
